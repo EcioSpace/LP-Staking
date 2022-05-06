@@ -84,6 +84,12 @@ contract EcioStaking {
         return user.lastDepositTimeStamp;
     }
 
+    function stakingStatus() public view returns (bool) {
+        UserInfo storage user = userInfo[msg.sender];
+        if(user.lastDepositTimeStamp + user.lockedDay > block.timestamp) return false;
+        else return true;
+    }
+
     function updatePool() internal {
         for (uint i = 0; i < userList.length; i++) {
             UserInfo storage user = userInfo[userList[i]];
@@ -93,12 +99,6 @@ contract EcioStaking {
             user.lastCalculatedTimeStamp = lastTimeStamp;
         }
     }
-
-    // function stakingStatus() public {
-    //     UserInfo user = userInfo[msg.sender];
-    //     if(user.lastDepositTimeStamp + lockedPeriod(lockedDay) > block.timestamp) return false;
-    //     else return true;
-    // }
 
     function deposit(uint256 amount, uint256 lockedDay) public {
         require(amount > 0, "invaild amount");
