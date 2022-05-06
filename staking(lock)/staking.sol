@@ -28,12 +28,14 @@ contract EcioStaking {
     
     // Info of each user that stakes LP tokens.
     mapping (address => UserInfo) public userInfo;
+    mapping(address => mapping (address => uint256)) allowed;
     address[] public userList;
     uint private unlocked = 1;
 
     event Deposit(address indexed user, uint256 amount);
     event Withdraw(address indexed user, uint256 amount);
     event Reward(address indexed user, uint256 amount);
+    event Approval(address indexed tokenOwner, address indexed spender, uint tokens);
 
     constructor(
         address _lpToken,
@@ -88,6 +90,12 @@ contract EcioStaking {
         UserInfo storage user = userInfo[msg.sender];
         if(user.lastDepositTimeStamp + user.lockedDay > block.timestamp) return false;
         else return true;
+    }
+
+    function approve(uint256 numTokens) public returns (bool) {
+        allowed[msg.sender][address(this)] = numTokens;
+        emit Approval(msg.sender, address(this), numTokens);
+        return true;
     }
 
     function updatePool() internal {
