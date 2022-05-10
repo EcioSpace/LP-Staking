@@ -31,9 +31,11 @@ contract EcioStaking {
 
     uint256 public totalAmountLockDay;
     // Info of each user that stakes LP tokens.
-    mapping (address => UserInfo) public userInfo;
+    // mapping (address => UserInfo) public userInfo;
+    mapping (address => mapping (uint => UserInfo)) public userInfo;
     mapping(address => mapping (address => uint256)) allowed;
     address[] public userList;
+    mapping(address => uint) public userlistNum;
     uint private unlocked = 1;
 
     event Deposit(address indexed user, uint256 amount);
@@ -57,13 +59,24 @@ contract EcioStaking {
         adminAddress = _adminAddress;
     }
 
-    function stakedLp() public view returns (uint256) {
-        UserInfo storage user = userInfo[msg.sender];
+    function userStakingCounter(address _useraddress) public view returns (uint256) {
+        return userlistNum[_useraddress];
+    }
+
+    function userCounter() public view returns (uint256) {
+        return userList.length;
+    }
+
+    function useraddress(uint256 userNum) public view returns (address) {
+        return userList[userNum];
+    }
+
+    function stakedLp(uint userStakingNum) public view returns (uint256) {
+        UserInfo storage user = userInfo[msg.sender][userStakingNum];
         return user.amount;
     }
 
     function multiplier(uint256 lockDays) public view returns (uint256) {
-        UserInfo storage user = userInfo[msg.sender];
         if(lockDays == 30) return 10;
         if(lockDays == 60) return 15;
         if(lockDays == 90) return 20;
@@ -72,36 +85,50 @@ contract EcioStaking {
         if(lockDays == 360) return 50;
     }
 
-    function stakingPeriod() public view returns (uint256) {
-        UserInfo storage user = userInfo[msg.sender];
+    function stakingPeriod(uint userStakingNum) public view returns (uint256) {
+        UserInfo storage user = userInfo[msg.sender][userStakingNum];
         return user.lockedDay;
     }
 
-    function earnEcio() public view returns (uint256) {
-        UserInfo storage user = userInfo[msg.sender];
+    function earnEcio(uint userStakingNum) public view returns (uint256) {
+        UserInfo storage user = userInfo[msg.sender][userStakingNum];
         return user.rewarded;
     }
 
-    function lockDate() public view returns (uint256) {
-        UserInfo storage user = userInfo[msg.sender];
+    function lockDate(uint userStakingNum) public view returns (uint256) {
+        UserInfo storage user = userInfo[msg.sender][userStakingNum];
         return user.lastDepositTimeStamp;
     }
 
-    function stakingStatus() public view returns (bool) {
-        UserInfo storage user = userInfo[msg.sender];
+    function stakingStatus(uint userStakingNum) public view returns (bool) {
+        UserInfo storage user = userInfo[msg.sender][userStakingNum];
         if(user.lastDepositTimeStamp + user.lockedDay * 1 days > block.timestamp) return false;
         else return true;
     }
 
+    // function updatePool() internal {
+    //     for(uint i = 0 ; i < userList.length ; i ++){
+    //         UserInfo storage user = userInfo[userList[i]];
+    //         uint256 lastTimeStamp = block.timestamp;
+    //         if(user.lastCalculatedTimeStamp + 1 days <= lastTimeStamp){
+    //             // user.lastDepositTimeStamp = lastTimeStamp;
+    //             uint256 accDebt = (user.amount * multiplier(user.lockedDay) * (1e6) * (1e18)) / totalAmountLockDay;
+    //             user.rewardDebt = user.rewardDebt.add(accDebt);
+    //             user.lastCalculatedTimeStamp = lastTimeStamp;
+    //         }
+    //     }
+    // }
+
     function updatePool() internal {
         for(uint i = 0 ; i < userList.length ; i ++){
-            UserInfo storage user = userInfo[userList[i]];
-            uint256 lastTimeStamp = block.timestamp;
-            if(user.lastCalculatedTimeStamp + 1 days <= lastTimeStamp){
-                // user.lastDepositTimeStamp = lastTimeStamp;
-                uint256 accDebt = (user.amount * multiplier(user.lockedDay) * (1e6) * (1e18)) / totalAmountLockDay;
-                user.rewardDebt = user.rewardDebt.add(accDebt);
-                user.lastCalculatedTimeStamp = lastTimeStamp;
+            for(uint j = 0 ; j < userlistNum[userList[i]] ; j ++){
+                UserInfo storage user = userInfo[userList[i]][j];
+                uint256 lastTimeStamp = block.timestamp;
+                if(user.lastCalculatedTimeStamp + 1 days <= lastTimeStamp){
+                    uint256 accDebt = (user.amount * multiplier(user.lockedDay) * (1e6) * (1e18)) / totalAmountLockDay;
+                    user.rewardDebt = user.rewardDebt.add(accDebt);
+                    user.lastCalculatedTimeStamp = lastTimeStamp;
+                }
             }
         }
     }
@@ -109,7 +136,7 @@ contract EcioStaking {
     function deposit(uint256 amount, uint256 lockDay) public {
         require(amount > 0, "invaild amount");
         TransferHelper.safeTransferFrom(lpToken, msg.sender, address(this), amount);
-        UserInfo storage user = userInfo[msg.sender];
+        // UserInfo storage user = userInfo[msg.sender];
         bool isFirst = true;
         for (uint i = 0; i < userList.length; i++) {
             if (userList[i] == msg.sender) {
@@ -118,6 +145,8 @@ contract EcioStaking {
         }
         updatePool();
         if (isFirst) {
+            UserInfo storage user = userInfo[msg.sender][0];
+            userlistNum[msg.sender] = 1;
             userList.push(msg.sender);
             user.amount = amount;
             user.rewarded = 0;
@@ -126,6 +155,8 @@ contract EcioStaking {
             user.lastCalculatedTimeStamp = block.timestamp;
             user.lockedDay = lockDay;            
         } else {
+            UserInfo storage user = userInfo[msg.sender][userlistNum[msg.sender]];
+            userlistNum[msg.sender] = userlistNum[msg.sender] + 1;
             user.amount = user.amount + amount;
             user.lastDepositTimeStamp = block.timestamp;
             user.lastCalculatedTimeStamp = block.timestamp;
@@ -136,8 +167,8 @@ contract EcioStaking {
         emit Deposit(msg.sender, amount);
     }
 
-    function withdraw() public {
-        UserInfo storage user = userInfo[msg.sender];
+    function withdraw(uint userStakingNum) public {
+        UserInfo storage user = userInfo[msg.sender][userStakingNum];
         require(user.lastDepositTimeStamp > 0, "invalid user");
         require(user.amount > 0, "not staked");
         require(user.lastDepositTimeStamp + user.lockedDay * 1 days < block.timestamp, "you are in lockedTime.");
@@ -150,15 +181,15 @@ contract EcioStaking {
         emit Withdraw(msg.sender, user.amount);
     }
 
-    function rewardUpdate() public {
-        UserInfo storage user = userInfo[msg.sender];
+    function rewardUpdate(uint userStakingNum) public {
+        UserInfo storage user = userInfo[msg.sender][userStakingNum];
         updatePool();
         user.rewarded = user.rewarded + user.rewardDebt;
         user.rewardDebt = 0;
     }
 
-    function claim() public {
-        UserInfo storage user = userInfo[msg.sender];
+    function claim(uint userStakingNum) public {
+        UserInfo storage user = userInfo[msg.sender][userStakingNum];
         updatePool();
         uint amount = user.rewardDebt;
         // require(amount > 0, "not enough reward amount");
@@ -168,4 +199,3 @@ contract EcioStaking {
         emit Reward(msg.sender, amount);
     }
 }
-
