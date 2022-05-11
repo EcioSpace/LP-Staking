@@ -36,6 +36,7 @@ contract EcioStaking {
     mapping(address => mapping (address => uint256)) allowed;
     address[] public userList;
     mapping(address => uint) public userlistNum;
+    mapping(address => mapping (uint => bool)) public userLockStatus;
     uint private unlocked = 1;
 
     event Deposit(address indexed user, uint256 amount);
@@ -106,18 +107,15 @@ contract EcioStaking {
         else return true;
     }
 
-    // function updatePool() internal {
-    //     for(uint i = 0 ; i < userList.length ; i ++){
-    //         UserInfo storage user = userInfo[userList[i]];
-    //         uint256 lastTimeStamp = block.timestamp;
-    //         if(user.lastCalculatedTimeStamp + 1 days <= lastTimeStamp){
-    //             // user.lastDepositTimeStamp = lastTimeStamp;
-    //             uint256 accDebt = (user.amount * multiplier(user.lockedDay) * (1e6) * (1e18)) / totalAmountLockDay;
-    //             user.rewardDebt = user.rewardDebt.add(accDebt);
-    //             user.lastCalculatedTimeStamp = lastTimeStamp;
-    //         }
-    //     }
-    // }
+    function userLockStatusReturner(uint userStakingNum) public view returns (bool) {
+        return userLockStatus[msg.sender][userStakingNum];
+    }
+
+    function unlock(uint userEcioBalance, uint userStakingNum) public {
+        require(userEcioBalance > 150, "Amount not enough");
+        TransferHelper.safeTransferFrom(lpToken, msg.sender, address(this), 150);
+        userLockStatus[msg.sender][userStakingNum] = false;
+    }
 
     function updatePool() internal {
         for(uint i = 0 ; i < userList.length ; i ++){
@@ -133,7 +131,7 @@ contract EcioStaking {
         }
     }
 
-    function deposit(uint256 amount, uint256 lockDay) public {
+    function stake(uint256 amount, uint256 lockDay) public {
         require(amount > 0, "invaild amount");
         TransferHelper.safeTransferFrom(lpToken, msg.sender, address(this), amount);
         // UserInfo storage user = userInfo[msg.sender];
@@ -146,6 +144,7 @@ contract EcioStaking {
         updatePool();
         if (isFirst) {
             UserInfo storage user = userInfo[msg.sender][0];
+            userLockStatus[msg.sender][0] = true;
             userlistNum[msg.sender] = 1;
             userList.push(msg.sender);
             user.amount = amount;
@@ -156,6 +155,7 @@ contract EcioStaking {
             user.lockedDay = lockDay;            
         } else {
             UserInfo storage user = userInfo[msg.sender][userlistNum[msg.sender]];
+            userLockStatus[msg.sender][userlistNum[msg.sender]] = true;
             userlistNum[msg.sender] = userlistNum[msg.sender] + 1;
             user.amount = user.amount + amount;
             user.lastDepositTimeStamp = block.timestamp;
@@ -171,7 +171,7 @@ contract EcioStaking {
         UserInfo storage user = userInfo[msg.sender][userStakingNum];
         require(user.lastDepositTimeStamp > 0, "invalid user");
         require(user.amount > 0, "not staked");
-        require(user.lastDepositTimeStamp + user.lockedDay * 1 days < block.timestamp, "you are in lockedTime.");
+        if(userLockStatus[msg.sender][userStakingNum] == true) require(user.lastDepositTimeStamp + user.lockedDay * 1 days < block.timestamp, "you are in lockedTime.");
         updatePool();
         TransferHelper.safeTransfer(lpToken, msg.sender, user.amount);
         totalAmount = totalAmount - user.amount;
