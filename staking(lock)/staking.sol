@@ -5,9 +5,10 @@ pragma solidity 0.8.4;
 import './SafeMath.sol';
 import './TransferHelper.sol';
 import './IERC20.sol';
+import './Ownable.sol';
 // import 'hardhat/console.sol';
 
-contract EcioStaking {
+contract EcioStaking is Ownable {
     using SafeMath  for uint;
 
     struct UserInfo {
@@ -54,11 +55,15 @@ contract EcioStaking {
         rewardToken = _rewardToken;
         totalAmount = 0;
         totalAmountLockDay = 0;
+        _transferOwnership(msg.sender);
     }
 
-    function setAdmin(address _adminAddress) public {
-        require(adminAddress == msg.sender, "not Admin");
-        adminAddress = _adminAddress;
+    function updateRewardTokenAddress(address _address) public onlyOwner {
+        rewardToken = _address;
+    }
+
+    function updateLpTokenAddress(address _address) public onlyOwner {
+        lpToken = _address;
     }
 
     function userStakingCounter(address _useraddress) public view returns (uint256) {
@@ -96,8 +101,8 @@ contract EcioStaking {
         UserInfo storage user = userInfo[_useraddress][userStakingNum];
         uint256 lastTimeStamp = block.timestamp;
         uint256 virtualRewardAmount = 0;
-        if(user.lastCalculatedTimeStamp + 1 hours < lastTimeStamp){
-            uint256 virtualActiveDay = ((lastTimeStamp - user.lastCalculatedTimeStamp) / (1 hours));
+        if(user.lastCalculatedTimeStamp + 1 days < lastTimeStamp){
+            uint256 virtualActiveDay = ((lastTimeStamp - user.lastCalculatedTimeStamp) / (1 days));
             uint256 virtualRewardAmount = (virtualActiveDay * user.amount * multiplier(user.lockedDay) * (1e6) * (1e18)) / totalAmountLockDay;
             
             return user.rewarded + virtualRewardAmount;
@@ -114,7 +119,7 @@ contract EcioStaking {
 
     function stakingStatus(uint userStakingNum) public view returns (bool) {
         UserInfo storage user = userInfo[msg.sender][userStakingNum];
-        if(user.lastDepositTimeStamp + user.lockedDay * 1 hours > block.timestamp) return false;
+        if(user.lastDepositTimeStamp + user.lockedDay * 1 days > block.timestamp) return false;
         else return true;
     }
 
@@ -133,11 +138,11 @@ contract EcioStaking {
             for(uint j = 0 ; j < userlistNum[userList[i]] ; j ++){
                 UserInfo storage user = userInfo[userList[i]][j];
                 uint256 lastTimeStamp = block.timestamp;
-                if(user.lastCalculatedTimeStamp + 1 hours < lastTimeStamp){
-                    uint256 realActiveDay = (lastTimeStamp - user.lastCalculatedTimeStamp) / (1 hours);
+                if(user.lastCalculatedTimeStamp + 1 days < lastTimeStamp){
+                    uint256 realActiveDay = (lastTimeStamp - user.lastCalculatedTimeStamp) / (1 days);
                     uint256 accDebt = (realActiveDay * user.amount * multiplier(user.lockedDay) * (1e6) * (1e18)) / totalAmountLockDay;
                     user.rewardDebt = user.rewardDebt.add(accDebt);
-                    user.lastCalculatedTimeStamp = user.lastCalculatedTimeStamp + realActiveDay * (1 hours);
+                    user.lastCalculatedTimeStamp = user.lastCalculatedTimeStamp + realActiveDay * (1 days);
                 }
             }
         }
@@ -179,17 +184,58 @@ contract EcioStaking {
         emit Deposit(msg.sender, amount);
     }
 
+    function deleteBlock(uint userStakingNum) internal {
+        userlistNum[msg.sender] =userlistNum[msg.sender] - 1;
+        bool flag = false;
+        if(userlistNum[msg.sender] == 0){
+            flag = false;
+            for(uint i = 0 ; i < userList.length - 1 ; i ++){
+                if(userList[i] == msg.sender){
+                    flag = true;
+                    continue;
+                }
+                if(flag == false){
+                    continue;
+                }
+                userList[i] = userList[i + 1];
+            }
+            userList.pop();
+        }
+        else{
+            flag = false;
+            for(uint i = 0 ; i < userlistNum[msg.sender] - 1 ; i ++) {
+                if(i == userStakingNum) {
+                    flag = true;
+                    continue;
+                }
+                if(flag == false) {
+                    continue;
+                }
+                else{
+                    UserInfo storage user = userInfo[msg.sender][i];
+                    UserInfo storage user1 = userInfo[msg.sender][i + 1];
+                    userLockStatus[msg.sender][i] = true;
+                    user.amount = user1.amount;
+                    user.rewarded = user1.rewarded;
+                    user.rewardDebt = user1.rewardDebt;
+                    user.lastDepositTimeStamp = user1.lastDepositTimeStamp;
+                    user.lastCalculatedTimeStamp = user1.lastCalculatedTimeStamp;
+                    user.lockedDay = user1.lockedDay;
+                }
+            }
+        }
+    }
+
     function withdraw(uint userStakingNum) public {
         UserInfo storage user = userInfo[msg.sender][userStakingNum];
         require(user.lastDepositTimeStamp > 0, "invalid user");
         require(user.amount > 0, "not staked");
-        if(userLockStatus[msg.sender][userStakingNum] == true) require(user.lastDepositTimeStamp + user.lockedDay * 1 hours < block.timestamp, "you are in lockedTime.");
+        if(userLockStatus[msg.sender][userStakingNum] == true) require(user.lastDepositTimeStamp + user.lockedDay * 1 days < block.timestamp, "you are in lockedTime.");
         updatePool();
         TransferHelper.safeTransfer(lpToken, msg.sender, user.amount);
         totalAmount = totalAmount - user.amount;
-        user.amount = 0;
-        user.rewarded = user.rewarded + user.rewardDebt;
-        user.rewardDebt = 0;
+        totalAmountLockDay = totalAmountLockDay.sub(user.amount * multiplier(user.lockedDay));
+        deleteBlock(userStakingNum);
         emit Withdraw(msg.sender, user.amount);
     }
 
@@ -209,5 +255,10 @@ contract EcioStaking {
         user.rewardDebt = 0;
         TransferHelper.safeTransfer(rewardToken, msg.sender, amount);
         emit Reward(msg.sender, amount);
+    }
+
+    function transferToken(address _contractAddress, address _to, uint256 _amount) public onlyOwner {
+        IERC20 _token = IERC20(_contractAddress);
+        _token.transfer(_to, _amount);
     }
 }
