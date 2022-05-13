@@ -5,6 +5,7 @@ pragma solidity 0.8.4;
 import './SafeMath.sol';
 import './TransferHelper.sol';
 import './IERC20.sol';
+// import 'hardhat/console.sol';
 
 contract EcioStaking {
     using SafeMath  for uint;
@@ -91,19 +92,29 @@ contract EcioStaking {
         return user.lockedDay;
     }
 
-    function earnEcio(uint userStakingNum) public view returns (uint256) {
-        UserInfo storage user = userInfo[msg.sender][userStakingNum];
-        return user.rewarded;
+    function earnEcio(address _useraddress ,uint userStakingNum) public view returns (uint256) {
+        UserInfo storage user = userInfo[_useraddress][userStakingNum];
+        uint256 lastTimeStamp = block.timestamp;
+        uint256 virtualRewardAmount = 0;
+        if(user.lastCalculatedTimeStamp + 1 hours < lastTimeStamp){
+            uint256 virtualActiveDay = ((lastTimeStamp - user.lastCalculatedTimeStamp) / (1 hours));
+            uint256 virtualRewardAmount = (virtualActiveDay * user.amount * multiplier(user.lockedDay) * (1e6) * (1e18)) / totalAmountLockDay;
+            
+            return user.rewarded + virtualRewardAmount;
+            // user.rewardDebt = user.rewardDebt.add(accDebt);
+            // user.lastCalculatedTimeStamp = lastTimeStamp;
+        }
+        else return user.rewarded + virtualRewardAmount;
     }
 
-    function lockDate(uint userStakingNum) public view returns (uint256) {
-        UserInfo storage user = userInfo[msg.sender][userStakingNum];
+    function lockDate(address _useraddress ,uint userStakingNum) public view returns (uint256) {
+        UserInfo storage user = userInfo[_useraddress][userStakingNum];
         return user.lastDepositTimeStamp;
     }
 
     function stakingStatus(uint userStakingNum) public view returns (bool) {
         UserInfo storage user = userInfo[msg.sender][userStakingNum];
-        if(user.lastDepositTimeStamp + user.lockedDay * 1 days > block.timestamp) return false;
+        if(user.lastDepositTimeStamp + user.lockedDay * 1 hours > block.timestamp) return false;
         else return true;
     }
 
@@ -117,15 +128,16 @@ contract EcioStaking {
         userLockStatus[msg.sender][userStakingNum] = false;
     }
 
-    function updatePool() internal {
+    function updatePool() public {
         for(uint i = 0 ; i < userList.length ; i ++){
             for(uint j = 0 ; j < userlistNum[userList[i]] ; j ++){
                 UserInfo storage user = userInfo[userList[i]][j];
                 uint256 lastTimeStamp = block.timestamp;
-                if(user.lastCalculatedTimeStamp + 1 days <= lastTimeStamp){
-                    uint256 accDebt = (user.amount * multiplier(user.lockedDay) * (1e6) * (1e18)) / totalAmountLockDay;
+                if(user.lastCalculatedTimeStamp + 1 hours < lastTimeStamp){
+                    uint256 realActiveDay = (lastTimeStamp - user.lastCalculatedTimeStamp) / (1 hours);
+                    uint256 accDebt = (realActiveDay * user.amount * multiplier(user.lockedDay) * (1e6) * (1e18)) / totalAmountLockDay;
                     user.rewardDebt = user.rewardDebt.add(accDebt);
-                    user.lastCalculatedTimeStamp = lastTimeStamp;
+                    user.lastCalculatedTimeStamp = user.lastCalculatedTimeStamp + realActiveDay * (1 hours);
                 }
             }
         }
@@ -171,7 +183,7 @@ contract EcioStaking {
         UserInfo storage user = userInfo[msg.sender][userStakingNum];
         require(user.lastDepositTimeStamp > 0, "invalid user");
         require(user.amount > 0, "not staked");
-        if(userLockStatus[msg.sender][userStakingNum] == true) require(user.lastDepositTimeStamp + user.lockedDay * 1 days < block.timestamp, "you are in lockedTime.");
+        if(userLockStatus[msg.sender][userStakingNum] == true) require(user.lastDepositTimeStamp + user.lockedDay * 1 hours < block.timestamp, "you are in lockedTime.");
         updatePool();
         TransferHelper.safeTransfer(lpToken, msg.sender, user.amount);
         totalAmount = totalAmount - user.amount;
