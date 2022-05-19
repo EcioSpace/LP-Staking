@@ -79,8 +79,8 @@ contract EcioStaking is Ownable {
         UserInfo storage user = userInfo[_address];
         uint256 RPD = user.amount * (1e6) * (1e18) / totalAmount;
         uint256 MPR = RPD * 60 / (user.amount * (1e6));
-        uint256 RMPR = APR / (1e12) + 100;
-        return RMPR ^ 6 / (1e12);
+        uint256 RMPR = MPR / (1e12) + 100;
+        return RMPR * RMPR * RMPR * RMPR * RMPR * RMPR / (1e12);
     }
 
     //user claim status(possible or impossible)
