@@ -50,48 +50,83 @@ contract EcioStaking is Ownable {
         _transferOwnership(msg.sender);
     }
 
+    //change reward token address
     function updateRewardTokenAddress(address _address) public onlyOwner {
         rewardToken = _address;
     }
     
+    //change Lp token address
     function updateLpTokenAddress(address _address) public onlyOwner {
         lpToken = _address;
     }
 
+    //Staked LP
+    function stakedLp() public view returns (uint256) {
+        UserInfo storage user = userInfo[msg.sender];
+        return user.amount;
+    }
+
+    //APR
+    function APRReturner(address _address) public view returns (uint256) {
+        UserInfo storage user = userInfo[_address];
+        uint256 RPD = user.amount * (1e6) / totalAmount;
+        uint256 APR = RPD * 365 / (user.amount * (1e6));
+    }
+
+    //user number
     function userCounter() public view returns (uint256) {
         return userList.length;
     }
 
+    //user address
     function userAddress(uint256 userNum) public view returns (address) {
         return userList[userNum];
     }
 
+    //user staked amount
     function userStakedLpAmount(uint256 userNum) public view returns (uint256) {
         UserInfo storage user = userInfo[userList[userNum]];
         return user.amount;
     }
 
-    function ecioClaimPossible(address _useraddress) public view returns (uint256) {
+    //reward amount
+    function ecioClaimPossibleAmout(address _useraddress) public view returns (uint256) {
         UserInfo storage user = userInfo[_useraddress];
         uint256 lastTimeStamp = block.timestamp;
         uint256 virtualRewardAmount = 0;
-        uint256 virtualActiveDay = (lastTimeStamp - user.lastCalculatedTimeStamp) / (1 days);
-        virtualRewardAmount = (virtualActiveDay * user.amount * REWARD_PER_DAY) / totalAmount;
-        return virtualRewardAmount;
+        uint256 virtualActiveMinute = (lastTimeStamp - user.lastCalculatedTimeStamp) / (1 minutes);
+        virtualRewardAmount = (virtualActiveMinute * user.amount * REWARD_PER_DAY) / (totalAmount * 24 * 60);
+        return user.rewardDebt + virtualRewardAmount;
     }
 
+    //total staked Lp Token amount
     function totalLpTokenAmount() public view returns (uint256) {
         return totalAmount;
     }
 
+    //user claim status(possible or impossible)
+    function userPossibleClaimReturner(address _useraddress) public view returns (bool) {
+        UserInfo storage user = userInfo[_useraddress];
+        if(user.lastDepositTimeStamp + 10 minutes < block.timestamp) return true;
+        else return false;
+    }
+
+    //user claim period
+    function userClaimPeriod(address _useraddress) public view returns (uint256) {
+        UserInfo storage user = userInfo[_useraddress];
+        if(user.lastDepositTimeStamp + 60 days < block.timestamp) return block.timestamp - 60 days;
+        else return 0;
+    }
+
+    //update pool
     function updatePool() internal {
         for (uint i = 0; i < userList.length; i++) {
             UserInfo storage user = userInfo[userList[i]];
             uint256 lastTimeStamp = block.timestamp;
-            uint256 rewardedDay = (lastTimeStamp - user.lastCalculatedTimeStamp) / 1 days;
-            uint256 accDebt = rewardedDay * REWARD_PER_DAY * user.amount / totalAmount;
+            uint256 rewardedMinutes = (lastTimeStamp - user.lastCalculatedTimeStamp) / 1 minutes;
+            uint256 accDebt = rewardedMinutes * REWARD_PER_DAY * user.amount / (totalAmount * 24 * 60);
             user.rewardDebt = user.rewardDebt.add(accDebt);
-            user.lastCalculatedTimeStamp = user.lastCalculatedTimeStamp + rewardedDay * 1 days;
+            user.lastCalculatedTimeStamp = user.lastCalculatedTimeStamp + rewardedMinutes * 1 minutes;
         }
     }
 
@@ -137,11 +172,10 @@ contract EcioStaking is Ownable {
         userList.pop();
     }
 
-    function withdraw() public {
+    function unStake() public {
         UserInfo storage user = userInfo[msg.sender];
         require(user.lastDepositTimeStamp > 0, "invalid user");
         require(user.amount > 0, "not staked");
-        require(user.lastDepositTimeStamp + lockedTime < block.timestamp, "you are in lockedTime.");
         updatePool();
         TransferHelper.safeTransfer(lpToken, msg.sender, user.amount);
         totalAmount = totalAmount - user.amount;
@@ -154,6 +188,7 @@ contract EcioStaking is Ownable {
         updatePool();
         uint amount = user.rewardDebt;
         require(amount > 0, "not enough reward amount");
+        require(user.lastDepositTimeStamp + 10 minutes < block.timestamp, "You are in lockedTime");
         user.rewarded = user.rewarded + amount;
         user.rewardDebt = 0;
         TransferHelper.safeTransfer(rewardToken, msg.sender, amount);
