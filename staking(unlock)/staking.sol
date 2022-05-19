@@ -66,11 +66,45 @@ contract EcioStaking is Ownable {
         return user.amount;
     }
 
-    //APR
+    //APR(%)
     function APRReturner(address _address) public view returns (uint256) {
         UserInfo storage user = userInfo[_address];
-        uint256 RPD = user.amount * (1e6) / totalAmount;
+        uint256 RPD = user.amount * (1e6) * (1e18) / totalAmount;
         uint256 APR = RPD * 365 / (user.amount * (1e6));
+        return APR / (1e12) + 100;
+    }
+
+    //APY(%)
+    function APYReturner(address _address) public view returns (uint256) {
+        UserInfo storage user = userInfo[_address];
+        uint256 RPD = user.amount * (1e6) * (1e18) / totalAmount;
+        uint256 MPR = RPD * 60 / (user.amount * (1e6));
+        uint256 RMPR = APR / (1e12) + 100;
+        return RMPR ^ 6 / (1e12);
+    }
+
+    //user claim status(possible or impossible)
+    function userClaimPossible(address _useraddress) public view returns (bool) {
+        UserInfo storage user = userInfo[_useraddress];
+        if(user.lastDepositTimeStamp + 10 minutes < block.timestamp) return true;
+        else return false;
+    }
+
+    //reward amount
+    function ecioClaimAmout(address _useraddress) public view returns (uint256) {
+        UserInfo storage user = userInfo[_useraddress];
+        uint256 lastTimeStamp = block.timestamp;
+        uint256 virtualRewardAmount = 0;
+        uint256 virtualActiveMinute = (lastTimeStamp - user.lastCalculatedTimeStamp) / (1 minutes);
+        virtualRewardAmount = (virtualActiveMinute * user.amount * REWARD_PER_DAY) / (totalAmount * 24 * 60);
+        return user.rewardDebt + virtualRewardAmount;
+    }
+
+    //user claim period
+    function userClaimPeriod(address _useraddress) public view returns (uint256) {
+        UserInfo storage user = userInfo[_useraddress];
+        if(user.lastDepositTimeStamp + 60 days < block.timestamp) return block.timestamp - 60 days;
+        else return 0;
     }
 
     //user number
@@ -89,33 +123,9 @@ contract EcioStaking is Ownable {
         return user.amount;
     }
 
-    //reward amount
-    function ecioClaimPossibleAmout(address _useraddress) public view returns (uint256) {
-        UserInfo storage user = userInfo[_useraddress];
-        uint256 lastTimeStamp = block.timestamp;
-        uint256 virtualRewardAmount = 0;
-        uint256 virtualActiveMinute = (lastTimeStamp - user.lastCalculatedTimeStamp) / (1 minutes);
-        virtualRewardAmount = (virtualActiveMinute * user.amount * REWARD_PER_DAY) / (totalAmount * 24 * 60);
-        return user.rewardDebt + virtualRewardAmount;
-    }
-
     //total staked Lp Token amount
     function totalLpTokenAmount() public view returns (uint256) {
         return totalAmount;
-    }
-
-    //user claim status(possible or impossible)
-    function userPossibleClaimReturner(address _useraddress) public view returns (bool) {
-        UserInfo storage user = userInfo[_useraddress];
-        if(user.lastDepositTimeStamp + 10 minutes < block.timestamp) return true;
-        else return false;
-    }
-
-    //user claim period
-    function userClaimPeriod(address _useraddress) public view returns (uint256) {
-        UserInfo storage user = userInfo[_useraddress];
-        if(user.lastDepositTimeStamp + 60 days < block.timestamp) return block.timestamp - 60 days;
-        else return 0;
     }
 
     //update pool
