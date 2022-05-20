@@ -198,7 +198,7 @@ contract EcioStaking is Ownable {
         updatePool();
         uint amount = user.rewardDebt;
         require(amount > 0, "not enough reward amount");
-        require(user.lastDepositTimeStamp + 10 minutes < block.timestamp, "You are in lockedTime");
+        require(user.lastDepositTimeStamp + 60 days < block.timestamp, "You are in lockedTime");
         user.rewarded = user.rewarded + amount;
         user.rewardDebt = 0;
         TransferHelper.safeTransfer(rewardToken, msg.sender, amount);
