@@ -15,6 +15,7 @@ contract EcioStaking is Ownable {
         uint256 rewardDebt;
         uint256 lastCalculatedTimeStamp;
         uint256 lastDepositTimeStamp;
+        bool unlockStatus;
     }
 
     // pool info
@@ -86,9 +87,13 @@ contract EcioStaking is Ownable {
     //user claim status(possible or impossible)
     function userClaimPossible(address _useraddress) public view returns (bool) {
         UserInfo storage user = userInfo[_useraddress];
-        if(user.lastDepositTimeStamp + 10 minutes < block.timestamp) return true;
+        require(user.unlockStatus == true, "Run the unlock function");
+        if(user.lastDepositTimeStamp + 60 days < block.timestamp) return true;
         else return false;
     }
+
+    //user click unlock function status
+    function clickUnlock()
 
     //reward amount
     function ecioClaimAmout(address _useraddress) public view returns (uint256) {
@@ -103,7 +108,7 @@ contract EcioStaking is Ownable {
     //user claim period
     function userClaimPeriod(address _useraddress) public view returns (uint256) {
         UserInfo storage user = userInfo[_useraddress];
-        if(user.lastDepositTimeStamp + 60 days < block.timestamp) return block.timestamp - 60 days;
+        if(user.lastDepositTimeStamp + 60 days < block.timestamp) return block.timestamp - user.lastDepositTimeStamp;
         else return 0;
     }
 
@@ -126,6 +131,13 @@ contract EcioStaking is Ownable {
     //total staked Lp Token amount
     function totalLpTokenAmount() public view returns (uint256) {
         return totalAmount;
+    }
+
+    //Unlock
+    function unlock() public {
+        UserInfo storage user = userInfo[msg.sender];
+        user.lastDepositTimeStamp = block.timestamp;
+        user.unlockStatus = true;
     }
 
     //update pool
@@ -157,9 +169,11 @@ contract EcioStaking is Ownable {
             user.rewarded = 0;
             user.rewardDebt = 0;
             user.lastDepositTimeStamp = block.timestamp;
-            user.lastCalculatedTimeStamp = block.timestamp;            
+            user.lastCalculatedTimeStamp = block.timestamp;
+            user.unlockStatus = false;            
         } else {
             user.amount = user.amount + amount;
+            user.unlockStatus = false;
             user.lastDepositTimeStamp = block.timestamp;
             user.lastCalculatedTimeStamp = block.timestamp;
         }
@@ -199,6 +213,7 @@ contract EcioStaking is Ownable {
         uint amount = user.rewardDebt;
         require(amount > 0, "not enough reward amount");
         require(user.lastDepositTimeStamp + 60 days < block.timestamp, "You are in lockedTime");
+        require(user.unlockStatus == true, "Click unlock function");
         user.rewarded = user.rewarded + amount;
         user.rewardDebt = 0;
         TransferHelper.safeTransfer(rewardToken, msg.sender, amount);
